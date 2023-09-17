@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC Video and Audio Sharing</title>
+</head>
+<body>
+    <h1>WebRTC Video and Audio Sharing</h1>
+
+    <div>
+        <h2>Local Video and Audio</h2>
+        <video id="localVideo" autoplay muted></video>
+        <button id="startVideoAndAudioShareButton">Start Video and Audio Share</button>
+    </div>
+
+    <div>
+        <h2>Remote Videos</h2>
+        <div id="remoteVideos"></div>
+    </div>
+
+    <script>
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideos = document.getElementById('remoteVideos');
+        let localStream;
+        let peerConnection; // Declare peerConnection here
+        const roomName = 'your_actual_room_name'; // Replace with your room name
+        let ws;
+
+        async function startVideoAndAudioSharing() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localStream = stream;
+                localVideo.srcObject = stream;
+                peerConnection = createPeerConnection(); // Create peer connection here
+                console.log('Started video and audio sharing');
+                initializeWebSocket(); // Initialize WebSocket connection after peerConnection is created
+            } catch (error) {
+                console.error('Error accessing video and audio:', error);
+            }
+        }
+
+        function createPeerConnection() {
+    if (window.RTCPeerConnection) {
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        };
+        const pc = new RTCPeerConnection(configuration); // Define peerConnection here
+
+        pc.ontrack = event => {
+            console.log('Received a remote stream:', event.streams);
+            const remoteVideoElement = document.createElement('video');
+            remoteVideoElement.srcObject = event.streams[0];
+            remoteVideoElement.autoplay = true;
+
+            // Make sure to append the video element to the remoteVideos div
+            remoteVideos.appendChild(remoteVideoElement);
+
+            console.log('Received a remote stream');
+        };
+
+        return pc;
+    } else {
+        // WebRTC is not supported
+        console.error('WebRTC is not supported in this browser.');
+        return null;
+    }
+}
+
+
+        function initializeWebSocket() {
+            // Initialize WebSocket when sharing local stream
+            ws = new WebSocket(`ws://${window.location.host}/ws/${roomName}/`);
+
+            ws.addEventListener('open', () => {
+                // WebSocket is open, now you can start sharing if needed
+                console.log('WebSocket connection opened');
+            });
+
+            ws.addEventListener('message', async event => {
+                const message = JSON.parse(event.data);
+
+                // Adding try-catch blocks for better error handling
+                try {
+                    if (message.type === 'answer') {
+                        const answer = new RTCSessionDescription(message.answer);
+                        await peerConnection.setRemoteDescription(answer);
+                        console.log('Received an answer');
+                    } else if (message.type === 'candidate') {
+                        const candidate = new RTCIceCandidate(message.candidate);
+                        await peerConnection.addIceCandidate(candidate);
+                        console.log('Received an ICE candidate');
+                    }
+                } catch (error) {
+                    console.error('Error handling message:', error);
+                }
+            });
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    try {
+                        // Send ICE candidates to the other peer
+                        ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
+                        console.log('Sent an ICE candidate');
+                    } catch (error) {
+                        console.error('Error sending ICE candidate:', error);
+                    }
+                }
+            };
+        }
+
+        // Set up the event handler when the page loads
+        window.addEventListener('load', () => {
+            document.getElementById('startVideoAndAudioShareButton').addEventListener('click', async () => {
+                startVideoAndAudioSharing();
+            });
+        });
+
+    </script>
+</body>
+</html>
